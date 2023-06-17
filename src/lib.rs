@@ -1,6 +1,44 @@
-use std::process::Command;
+use core::fmt;
+use std::{io, process::Command, string::FromUtf8Error};
 
-pub fn execute_command(command_line: &str, log_stderr: bool) -> bool {
+pub enum Errors {
+    FromUtf8(FromUtf8Error),
+    IO(io::Error),
+}
+
+impl fmt::Display for Errors {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Errors::FromUtf8(ref err) => err.fmt(f),
+            Errors::IO(ref err) => err.fmt(f),
+        }
+    }
+}
+
+impl From<FromUtf8Error> for Errors {
+    fn from(err: FromUtf8Error) -> Errors {
+        Errors::FromUtf8(err)
+    }
+}
+
+impl From<io::Error> for Errors {
+    fn from(err: io::Error) -> Errors {
+        Errors::IO(err)
+    }
+}
+
+pub struct CommandOutput(String, u8);
+
+impl CommandOutput {
+    pub fn output(&self) -> &str {
+        &self.0
+    }
+    pub fn exit_code(&self) -> &u8 {
+        &self.1
+    }
+}
+
+pub fn execute_command(command_line: &str) -> Result<CommandOutput, Errors> {
     let output = Command::new("sh")
         .arg("-c")
         .arg(format!("{command_line}"))
@@ -8,29 +46,36 @@ pub fn execute_command(command_line: &str, log_stderr: bool) -> bool {
     return match output {
         Ok(output) => {
             if !output.status.success() {
-                if output.stderr.len() > 0 && log_stderr {
-                    println!(
-                        "{}",
-                        String::from_utf8(output.stderr)
-                            .expect("Could not decode stderr")
-                    );
+                return Ok(CommandOutput(String::from_utf8(output.stderr)?, 1));
+            }
+            Ok(CommandOutput(String::from_utf8(output.stdout)?, 0))
+        }
+        Err(err) => Err(Errors::IO(err)),
+    };
+}
+
+pub fn execute_command_silent(command_line: &str, log_stderr: bool) -> bool {
+    let output = execute_command(command_line);
+    return match output {
+        Ok(output) => {
+            if output.exit_code() > &0 {
+                if log_stderr {
+                    eprintln!("{}", output.output());
                 }
                 return false;
             }
             true
         }
         Err(err) => {
-            dbg!("{}", err);
+            eprintln!("{}", err.to_string());
             false
         }
-    }
+    };
 }
-
 
 pub fn command_exists(command: &str) -> bool {
-    execute_command(&format!("command -v {command} &> /dev/null"), false)
+    execute_command_silent(&format!("command -v {command}"), false)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -38,13 +83,13 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let result = execute_command("echo hello", false);
+        let result = execute_command_silent("echo hello", false);
         assert_eq!(result, true);
     }
 
     #[test]
     fn it_fails() {
-        let result = execute_command("invalid-command-xxxxxxxxxxxx", true);
+        let result = execute_command_silent("invalid-command-xxxxxxxxxxxx", true);
         // stderr should be logged to the console
         assert_eq!(result, false);
     }
