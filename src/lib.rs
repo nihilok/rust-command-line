@@ -1,6 +1,7 @@
 use core::fmt;
 use std::{io, process::Command, string::FromUtf8Error};
 
+#[derive(Debug)]
 pub enum Errors {
     FromUtf8(FromUtf8Error),
     IO(io::Error),
@@ -26,6 +27,8 @@ impl From<io::Error> for Errors {
         Errors::IO(err)
     }
 }
+
+impl std::error::Error for Errors {}
 
 pub struct CommandOutput(String, u8);
 
