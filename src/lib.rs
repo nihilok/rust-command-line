@@ -5,6 +5,7 @@ use std::{io, process::Command, string::FromUtf8Error};
 pub enum Errors {
     FromUtf8(FromUtf8Error),
     IO(io::Error),
+    Custom(String)
 }
 
 impl fmt::Display for Errors {
@@ -12,6 +13,7 @@ impl fmt::Display for Errors {
         match *self {
             Errors::FromUtf8(ref err) => err.fmt(f),
             Errors::IO(ref err) => err.fmt(f),
+            Errors::Custom(ref err) => write!(f, "ERROR: {})", err),
         }
     }
 }
@@ -25,6 +27,12 @@ impl From<FromUtf8Error> for Errors {
 impl From<io::Error> for Errors {
     fn from(err: io::Error) -> Errors {
         Errors::IO(err)
+    }
+}
+
+impl From<String> for Errors {
+    fn from(err: String) -> Errors {
+        Errors::Custom(err)
     }
 }
 
