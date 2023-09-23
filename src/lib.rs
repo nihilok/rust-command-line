@@ -5,7 +5,8 @@ use std::{io, process::Command, string::FromUtf8Error};
 pub enum Errors {
     FromUtf8(FromUtf8Error),
     IO(io::Error),
-    Custom(String)
+    Custom(String),
+    STDERR(String),
 }
 
 impl fmt::Display for Errors {
@@ -14,6 +15,7 @@ impl fmt::Display for Errors {
             Errors::FromUtf8(ref err) => err.fmt(f),
             Errors::IO(ref err) => err.fmt(f),
             Errors::Custom(ref err) => write!(f, "ERROR: {})", err),
+            Errors::STDERR(ref err) => write!(f, "ERROR: {})", err),
         }
     }
 }
@@ -32,7 +34,7 @@ impl From<io::Error> for Errors {
 
 impl From<String> for Errors {
     fn from(err: String) -> Errors {
-        Errors::Custom(err)
+        Errors::STDERR(err)
     }
 }
 
@@ -62,6 +64,20 @@ pub fn execute_command(command_line: &str) -> Result<CommandOutput, Errors> {
             Ok(CommandOutput(String::from_utf8(output.stdout)?, 0))
         }
         Err(err) => Err(Errors::IO(err)),
+    };
+}
+
+pub fn sh(command_line: &str) -> Result<String, Errors> {
+    let output = execute_command(command_line);
+    return match output {
+        Ok(output) => {
+            let content = output.output().to_string();
+            if output.1 == 1 {
+                return Err(Errors::STDERR(content))
+            }
+            Ok(content)
+        }
+        Err(err) => Err(err),
     };
 }
 
@@ -100,7 +116,7 @@ mod tests {
 
     #[test]
     fn it_fails() {
-        let result = execute_command_silent("invalid-command-xxxxxxxxxxxx", true);
+        let result = execute_command_silent("invalid-command-xxxxxxxxxxxx", false);
         // stderr should be logged to the console
         assert_eq!(result, false);
     }
@@ -115,5 +131,17 @@ mod tests {
     fn test_command_not_exists() {
         let result = command_exists("invalid-command-xxxxxxxxxxxx");
         assert_eq!(result, false);
+    }
+
+    #[test]
+    fn test_command_with_errors() {
+        let result = sh("mv file-does-not-exist.txt /location/does/not/exist");
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_command_not_with_errors() {
+        let result = sh("echo hello");
+        assert_eq!(result.is_err(), false);
     }
 }
